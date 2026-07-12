@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 
 void main() {
   runApp(const MyApp());
 }
+
+const String baseUrl = 'http://10.0.2.2:5000';
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -12,6 +17,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Event planner',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         // This is the theme of your application.
         //
@@ -28,7 +34,7 @@ class MyApp extends StatelessWidget {
         //
         // This works for code too, not just values: Most code changes can be
         // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: const Color.fromARGB(255, 97, 55, 170)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color.fromARGB(255, 97, 55, 170)),
       ),
       home: const MyHomePage(title: 'Home'),
     );
@@ -102,7 +108,7 @@ class _MyHomePageState extends State<MyHomePage> {
           // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
           // action in the IDE, or press "p" in the console), to see the
           // wireframe for each widget.
-          mainAxisAlignment: .center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text('You have pushed the button this many times:'),
             Text(
