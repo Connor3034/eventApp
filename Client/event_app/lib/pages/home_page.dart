@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'create_event.dart';
+
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -24,9 +26,17 @@ class _HomePageState extends State<HomePage> {
           NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
-      body: const Center(
-        child: Text('Welcome to the event app'),
+      floatingActionButton: FloatingActionButton(
+        
+        focusColor: Theme.of(context).colorScheme.primaryContainer,
+        onPressed: (){
+        Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateEvent() ));
+      },
+      child: Icon(Icons.add_circle_outline)
       ),
+    
+
+      
     );
   }
 } 
