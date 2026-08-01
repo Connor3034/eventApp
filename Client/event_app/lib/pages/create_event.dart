@@ -10,6 +10,30 @@ class CreateEvent extends StatefulWidget {
 class _CreateEventState extends State<CreateEvent> {
   // GlobalKey needed to manage form state and validation
   final _formKey = GlobalKey<FormState>();
+  DateTime? _selectedDate;
+  final _dateController = TextEditingController();
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(context: context,
+     firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+  );
+
+  if(picked != null) {
+    setState(() {
+      _selectedDate = picked;
+      _dateController.text =
+      '${picked.day}/${picked.month}/${picked.year}';
+    });
+  }
+
+  }
+
+  @override
+void dispose() {
+  _dateController.dispose();
+  super.dispose();
+}  
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +55,30 @@ class _CreateEventState extends State<CreateEvent> {
                   return null;
                 },
               ),
+              TextFormField(
+                controller: _dateController,
+                readOnly: true,
+                decoration: const InputDecoration(labelText: 'Event Date',
+                suffixIcon: Icon(Icons.calendar_today_outlined),              
+                 ),
+                 onTap: _pickDate,
+                 validator: (value) {
+                  if (_selectedDate == null) {
+                    return 'Please select a date';
+                  }
+                  return null;
+                 },
+
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(onPressed: () {
+                if (_formKey.currentState!.validate()) {
+                  //submit event
+                }
+              } , child: const Text ('Create Event'),
+              ),
+                
+    
             ],
           ),
         ),
