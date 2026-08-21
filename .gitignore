@@ -1,6 +1,5 @@
 # Miscellaneous
 *.class
-*.lock
 *.log
 *.pyc
 *.swp
@@ -123,3 +122,4 @@ app.*.symbols
 Server/.env
 Server/node_modules/
 Server/*.log
+**/node_modules/

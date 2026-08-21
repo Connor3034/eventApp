@@ -8,23 +8,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:event_app/main.dart';
+import 'package:event_app/auth_service.dart';
+import 'package:event_app/pages/login.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('renders the login form', (WidgetTester tester) async {
+    final authService = AuthService();
+    await tester.pumpWidget(
+      MaterialApp(home: Login(authService: authService)),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Log in'), findsNWidgets(2));
+    expect(find.text('Create an account'), findsOneWidget);
   });
 }
