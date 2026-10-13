@@ -1,16 +1,29 @@
 import 'package:flutter/material.dart';
+
 import 'auth_service.dart';
-import 'pages/home_page.dart';
+import 'events_service.dart';
 import 'pages/login.dart';
+import 'pages/main_shell.dart';
 
 void main() {
-  runApp(MyApp(authService: AuthService()));
+  final authService = AuthService();
+  runApp(
+    MyApp(
+      authService: authService,
+      eventsService: EventsService(authService),
+    ),
+  );
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({required this.authService, super.key});
+  const MyApp({
+    required this.authService,
+    required this.eventsService,
+    super.key,
+  });
 
   final AuthService authService;
+  final EventsService eventsService;
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -20,13 +33,22 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    widget.authService.addListener(_handleAuthChanged);
     widget.authService.initialize();
   }
 
   @override
   void dispose() {
+    widget.authService.removeListener(_handleAuthChanged);
     widget.authService.dispose();
+    widget.eventsService.dispose();
     super.dispose();
+  }
+
+  void _handleAuthChanged() {
+    if (!widget.authService.isAuthenticated) {
+      widget.eventsService.clear();
+    }
   }
 
   @override
@@ -49,7 +71,10 @@ class _MyAppState extends State<MyApp> {
             );
           }
           if (widget.authService.isAuthenticated) {
-            return HomePage(authService: widget.authService);
+            return MainShell(
+              authService: widget.authService,
+              eventsService: widget.eventsService,
+            );
           }
           return Login(authService: widget.authService);
         },
@@ -57,4 +82,3 @@ class _MyAppState extends State<MyApp> {
     );
   }
 }
-    

@@ -19,6 +19,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_user_name_unique
 
 CREATE TABLE IF NOT EXISTS Events (
   event_id SERIAL PRIMARY KEY,
+  name VARCHAR(255),
   event_time TIMESTAMPTZ NOT NULL,
   location VARCHAR(255) NOT NULL,
   user_id INTEGER REFERENCES Users (user_id)

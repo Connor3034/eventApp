@@ -24,5 +24,6 @@ Event planner app: Flutter client + Express/Postgres API.
 ## Flutter client
 
 - Commands: `cd Client/event_app && flutter pub get`, `flutter analyze`, `flutter test`, `flutter run`.
-- API base URL is compile-time: default `http://10.0.2.2:5000/api` (Android emulator). Override with `--dart-define=API_BASE_URL=http://127.0.0.1:5000/api` for desktop/device.
+- API base URL is compile-time: default `http://10.0.2.2:5000/api` (Android emulator). Override with `--dart-define=API_BASE_URL=http://127.0.0.1:5000/api` for desktop/device. Defined once in `lib/api_config.dart`.
 - Auth state lives in `AuthService` (`ChangeNotifier`); token persisted via `flutter_secure_storage`, user rebuilt from `GET /api/auth/me`.
+- Event data lives in `EventsService` (`ChangeNotifier`, authenticated GET/POST `/api/events`). `MainShell` hosts the Home/Calendar/Profile tabs and the create-event FAB; `CreateEvent` requires an `EventsService`.

@@ -180,6 +180,7 @@ app.get("/api/events", requireAuth, async (req, res) => {
     const result = await pool.query(`
       SELECT
         e.event_id,
+        e.name,
         e.event_time,
         e.location,
         e.user_id,
@@ -196,18 +197,20 @@ app.get("/api/events", requireAuth, async (req, res) => {
 
 // this endpoint sends the event information to the database and creates a new row 
 app.post("/api/events", requireAuth, async (req, res) => {
-  const { event_time, location } = req.body;
+  const { name, event_time, location } = req.body;
+  const normalizedName = typeof name === "string" ? name.trim() : "";
+  const normalizedLocation = typeof location === "string" ? location.trim() : "";
 
-  if (!event_time || !location) {
-    return res.status(400).json({ error: "event_time and location are required" });
+  if (!normalizedName || !event_time || !normalizedLocation) {
+    return res.status(400).json({ error: "name, event_time, and location are required" });
   }
 
   try {
     const result = await pool.query(
-      `INSERT INTO Events (event_time, location, user_id)
-       VALUES ($1, $2, $3)
-       RETURNING event_id, event_time, location, user_id`,
-      [event_time, location, req.userId]
+      `INSERT INTO Events (name, event_time, location, user_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING event_id, name, event_time, location, user_id`,
+      [normalizedName, event_time, normalizedLocation, req.userId]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {

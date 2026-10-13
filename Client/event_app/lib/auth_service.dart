@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_config.dart';
+
 class AuthUser {
   const AuthUser({
     required this.id,
@@ -37,10 +39,6 @@ class AuthService extends ChangeNotifier {
   })  : _client = client ?? http.Client(),
         _storage = storage ?? const FlutterSecureStorage();
 
-  static const _apiBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:5000/api',
-  );
   static const _tokenKey = 'event_app_access_token';
 
   final http.Client _client;
@@ -59,7 +57,7 @@ class AuthService extends ChangeNotifier {
       }
 
       final response = await _client.get(
-        Uri.parse('$_apiBaseUrl/auth/me'),
+        Uri.parse('$apiBaseUrl/auth/me'),
         headers: {'Authorization': 'Bearer $savedToken'},
       );
       if (response.statusCode == 200) {
@@ -76,7 +74,7 @@ class AuthService extends ChangeNotifier {
 
   Future<void> login({required String email, required String password}) async {
     final response = await _client.post(
-      Uri.parse('$_apiBaseUrl/auth/login'),
+      Uri.parse('$apiBaseUrl/auth/login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email.trim(), 'password': password}),
     );
@@ -89,7 +87,7 @@ class AuthService extends ChangeNotifier {
     required String password,
   }) async {
     final response = await _client.post(
-      Uri.parse('$_apiBaseUrl/auth/signup'),
+      Uri.parse('$apiBaseUrl/auth/signup'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'user_name': username.trim(),
