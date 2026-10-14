@@ -111,6 +111,13 @@ app.post("/api/auth/signup", async (req, res) => {
       [normalizedName, normalizedEmail, passwordHash]
     );
     const user = result.rows[0];
+    // Claim any invites that were sent to this email before the account existed.
+    await pool.query(
+      `UPDATE Attendance
+       SET user_id = $1
+       WHERE user_id IS NULL AND LOWER(email) = $2`,
+      [user.user_id, normalizedEmail]
+    );
     res.status(201).json({ user: publicUser(user), token: createToken(user) });
   } catch (error) {
     if (error.code === "23505") {
@@ -173,10 +180,9 @@ app.get("/api/users", requireAuth, async (req, res) => {
   }
 });
 
-// this is the endpoint for the events table, returning all the rows plus the
-// associated user info ordered by the event ids. can_edit is true for the
-// creator or anyone with an Attendance row (an invitee); can_delete is true
-// only for the creator.
+// this is the endpoint for the events table. It returns only events the caller
+// created or has accepted an invite to. can_edit is true for the creator or an
+// accepted attendee; can_delete is true only for the creator.
 app.get("/api/events", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
@@ -189,11 +195,19 @@ app.get("/api/events", requireAuth, async (req, res) => {
         u.user_name,
         (e.user_id = $1 OR EXISTS (
           SELECT 1 FROM Attendance a
-          WHERE a.event_id = e.event_id AND a.user_id = $1
+          WHERE a.event_id = e.event_id
+            AND a.user_id = $1
+            AND a.status = 'accepted'
         )) AS can_edit,
         (e.user_id = $1) AS can_delete
       FROM Events e
       LEFT JOIN Users u ON e.user_id = u.user_id
+      WHERE e.user_id = $1 OR EXISTS (
+        SELECT 1 FROM Attendance a
+        WHERE a.event_id = e.event_id
+          AND a.user_id = $1
+          AND a.status = 'accepted'
+      )
       ORDER BY e.event_id`,
       [req.userId]
     );
@@ -226,8 +240,8 @@ app.post("/api/events", requireAuth, async (req, res) => {
   }
 });
 
-// this endpoint updates an existing event. the creator or an invitee
-// (anyone with an Attendance row for the event) may edit it.
+// this endpoint updates an existing event. the creator or an accepted
+// attendee may edit it.
 app.put("/api/events/:id", requireAuth, async (req, res) => {
   const eventId = Number(req.params.id);
   if (!Number.isInteger(eventId) || eventId <= 0) {
@@ -248,7 +262,9 @@ app.put("/api/events/:id", requireAuth, async (req, res) => {
         e.user_id,
         (e.user_id = $2 OR EXISTS (
           SELECT 1 FROM Attendance a
-          WHERE a.event_id = e.event_id AND a.user_id = $2
+          WHERE a.event_id = e.event_id
+            AND a.user_id = $2
+            AND a.status = 'accepted'
         )) AS can_edit
       FROM Events e
       WHERE e.event_id = $1`,
@@ -349,17 +365,284 @@ app.post("/api/attendance", requireAuth, async (req, res) => {
   }
 
   try {
+    const myEmail = await emailForUser(req.userId);
+    const updated = await pool.query(
+      `UPDATE Attendance
+       SET status = 'accepted', email = COALESCE(email, $3)
+       WHERE event_id = $1 AND user_id = $2
+       RETURNING attendance_id, event_id, user_id, status`,
+      [event_id, req.userId, myEmail]
+    );
+
+    if (updated.rows[0]) {
+      return res.status(201).json(updated.rows[0]);
+    }
+
     const result = await pool.query(
-      `INSERT INTO Attendance (event_id, user_id)
-       VALUES ($1, $2)
-       RETURNING attendance_id, event_id, user_id`,
-      [event_id, req.userId]
+      `INSERT INTO Attendance (event_id, user_id, email, status)
+       VALUES ($1, $2, $3, 'accepted')
+       RETURNING attendance_id, event_id, user_id, status`,
+      [event_id, req.userId, myEmail]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+// ---------------------------------------------------------------------------
+// Invites / attendance
+// ---------------------------------------------------------------------------
+
+async function loadEventPermission(eventId, userId) {
+  const result = await pool.query(
+    `SELECT
+      e.user_id,
+      (e.user_id = $2 OR EXISTS (
+        SELECT 1 FROM Attendance a
+        WHERE a.event_id = e.event_id
+          AND a.user_id = $2
+          AND a.status = 'accepted'
+      )) AS allowed
+    FROM Events e
+    WHERE e.event_id = $1`,
+    [eventId, userId]
+  );
+  return result.rows[0] || null;
+}
+
+async function emailForUser(userId) {
+  const result = await pool.query(
+    "SELECT LOWER(email) AS email FROM Users WHERE user_id = $1",
+    [userId]
+  );
+  return result.rows[0]?.email || null;
+}
+
+// Invite someone to an event by email. The creator or an accepted attendee may
+// invite. The invitee does not need an account; their user_id is linked when an
+// account with that email exists (or is created later).
+app.post("/api/events/:id/invite", requireAuth, async (req, res) => {
+  const eventId = Number(req.params.id);
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return res.status(400).json({ error: "A valid event id is required" });
+  }
+
+  const { email } = req.body || {};
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+
+  if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    return res.status(400).json({ error: "A valid email is required" });
+  }
+
+  try {
+    const permission = await loadEventPermission(eventId, req.userId);
+    if (!permission) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+    if (!permission.allowed) {
+      return res.status(403).json({ error: "You cannot invite to this event" });
+    }
+
+    const inviterEmail = await emailForUser(req.userId);
+    if (normalizedEmail === inviterEmail) {
+      return res.status(400).json({ error: "You cannot invite yourself" });
+    }
+
+    const found = await pool.query(
+      "SELECT user_id, user_name, email FROM Users WHERE LOWER(email) = $1",
+      [normalizedEmail]
+    );
+    const invitee = found.rows[0];
+    const inviteeUserId = invitee ? invitee.user_id : null;
+
+    // Re-inviting updates the existing row (e.g. a declined invite) back to
+    // pending. An already-accepted attendee stays accepted.
+    const updated = await pool.query(
+      `UPDATE Attendance
+       SET status = CASE WHEN status = 'accepted' THEN 'accepted' ELSE 'pending' END,
+           user_id = COALESCE($3::int, user_id),
+           email = $2
+       WHERE event_id = $1
+         AND (LOWER(email) = $2 OR ($3::int IS NOT NULL AND user_id = $3::int))
+       RETURNING attendance_id, event_id, user_id, status`,
+      [eventId, normalizedEmail, inviteeUserId]
+    );
+
+    let row = updated.rows[0];
+    let created = false;
+    if (!row) {
+      const inserted = await pool.query(
+        `INSERT INTO Attendance (event_id, user_id, email, status)
+         VALUES ($1, $2::int, $3, 'pending')
+         RETURNING attendance_id, event_id, user_id, status`,
+        [eventId, inviteeUserId, normalizedEmail]
+      );
+      row = inserted.rows[0];
+      created = true;
+    }
+
+    res.status(created ? 201 : 200).json({
+      ...row,
+      user_name: invitee ? invitee.user_name : null,
+      email: normalizedEmail,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List the attendees/invites for an event. Visible to the creator or anyone
+// who has an invite (any status) for the event.
+app.get("/api/events/:id/attendees", requireAuth, async (req, res) => {
+  const eventId = Number(req.params.id);
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return res.status(400).json({ error: "A valid event id is required" });
+  }
+
+  try {
+    const permission = await loadEventPermission(eventId, req.userId);
+    if (!permission) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+    if (permission.user_id !== req.userId && !permission.allowed) {
+      const own = await pool.query(
+        "SELECT 1 FROM Attendance WHERE event_id = $1 AND user_id = $2",
+        [eventId, req.userId]
+      );
+      if (own.rows.length === 0) {
+        return res.status(403).json({ error: "You cannot view this event" });
+      }
+    }
+
+    const result = await pool.query(
+      `SELECT
+        a.attendance_id,
+        a.event_id,
+        a.user_id,
+        a.status,
+        a.email,
+        u.user_name
+      FROM Attendance a
+      LEFT JOIN Users u ON a.user_id = u.user_id
+      WHERE a.event_id = $1
+      ORDER BY a.attendance_id`,
+      [eventId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Cancel an invite or remove an attendee. Only the event creator may do this.
+// Keyed by attendance id so it works for invitees without an account.
+app.delete("/api/events/:id/attendees/:attendanceId", requireAuth, async (req, res) => {
+  const eventId = Number(req.params.id);
+  const attendanceId = Number(req.params.attendanceId);
+  if (!Number.isInteger(eventId) || eventId <= 0 ||
+      !Number.isInteger(attendanceId) || attendanceId <= 0) {
+    return res.status(400).json({ error: "Valid event and attendee ids are required" });
+  }
+
+  try {
+    const existing = await pool.query(
+      "SELECT user_id FROM Events WHERE event_id = $1",
+      [eventId]
+    );
+    const event = existing.rows[0];
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+    if (event.user_id !== req.userId) {
+      return res.status(403).json({ error: "Only the creator can manage attendees" });
+    }
+
+    const deleted = await pool.query(
+      "DELETE FROM Attendance WHERE attendance_id = $1 AND event_id = $2",
+      [attendanceId, eventId]
+    );
+    if (deleted.rowCount === 0) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+    res.status(204).end();
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Accept or decline an invite. Only the invited person may change their status.
+app.patch("/api/invites/:attendanceId", requireAuth, async (req, res) => {
+  const attendanceId = Number(req.params.attendanceId);
+  if (!Number.isInteger(attendanceId) || attendanceId <= 0) {
+    return res.status(400).json({ error: "A valid invite id is required" });
+  }
+
+  const { status } = req.body || {};
+  if (status !== "accepted" && status !== "declined") {
+    return res.status(400).json({ error: "status must be accepted or declined" });
+  }
+
+  try {
+    const existing = await pool.query(
+      "SELECT user_id, LOWER(email) AS email FROM Attendance WHERE attendance_id = $1",
+      [attendanceId]
+    );
+    const invite = existing.rows[0];
+    if (!invite) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+
+    const myEmail = await emailForUser(req.userId);
+    const isMine = invite.user_id === req.userId ||
+      (invite.email != null && invite.email === myEmail);
+    if (!isMine) {
+      return res.status(403).json({ error: "This invite is not yours" });
+    }
+
+    const result = await pool.query(
+      `UPDATE Attendance
+       SET status = $2, user_id = $3
+       WHERE attendance_id = $1
+       RETURNING attendance_id, event_id, user_id, status`,
+      [attendanceId, status, req.userId]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Current user's pending invites, with event details.
+app.get("/api/invites", requireAuth, async (req, res) => {
+  try {
+    const myEmail = await emailForUser(req.userId);
+    const result = await pool.query(
+      `SELECT
+        a.attendance_id,
+        a.event_id,
+        a.status,
+        e.name,
+        e.event_time,
+        e.location,
+        e.user_id,
+        u.user_name AS host_name
+      FROM Attendance a
+      JOIN Events e ON a.event_id = e.event_id
+      LEFT JOIN Users u ON e.user_id = u.user_id
+      WHERE a.status = 'pending'
+        AND (
+          a.user_id = $1
+          OR ($2::text IS NOT NULL AND LOWER(a.email) = $2)
+        )
+      ORDER BY e.event_time`,
+      [req.userId, myEmail]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // starts the server and on the specified port and keepts it running
 app.listen(port, () => {
   console.log(`API server listening on port ${port}`);

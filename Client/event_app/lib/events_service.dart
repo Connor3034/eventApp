@@ -5,7 +5,9 @@ import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
 import 'auth_service.dart';
+import 'models/attendee.dart';
 import 'models/event.dart';
+import 'models/invite.dart';
 
 class EventsException implements Exception {
   const EventsException(this.message);
@@ -29,7 +31,13 @@ class EventsService extends ChangeNotifier {
   bool isLoading = false;
   String? error;
 
+  List<Invite> _pendingInvites = const [];
+  bool isLoadingInvites = false;
+  String? invitesError;
+
   List<Event> get events => List.unmodifiable(_events);
+
+  List<Invite> get pendingInvites => List.unmodifiable(_pendingInvites);
 
   List<Event> get upcoming {
     final now = DateTime.now();
@@ -163,10 +171,135 @@ class EventsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadInvites() async {
+    final token = _authService.token;
+    if (token == null) {
+      _pendingInvites = const [];
+      notifyListeners();
+      return;
+    }
+
+    isLoadingInvites = true;
+    invitesError = null;
+    notifyListeners();
+
+    try {
+      final response = await _client.get(
+        Uri.parse('$apiBaseUrl/invites'),
+        headers: _headers(token),
+      );
+      if (response.statusCode != 200) {
+        throw EventsException(_errorMessage(response, 'Unable to load invites'));
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) {
+        throw const EventsException('Unexpected response from the server');
+      }
+      _pendingInvites = decoded
+          .map((item) => Invite.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } on EventsException catch (exception) {
+      invitesError = exception.message;
+    } catch (_) {
+      invitesError = 'Unable to connect to the server';
+    } finally {
+      isLoadingInvites = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> respondToInvite(int attendanceId, {required bool accept}) async {
+    final token = _authService.token;
+    if (token == null) {
+      throw const EventsException('You need to be signed in');
+    }
+
+    final response = await _client.patch(
+      Uri.parse('$apiBaseUrl/invites/$attendanceId'),
+      headers: _headers(token, withJson: true),
+      body: jsonEncode({'status': accept ? 'accepted' : 'declined'}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw EventsException(_errorMessage(response, 'Unable to respond to invite'));
+    }
+
+    _pendingInvites =
+        _pendingInvites.where((invite) => invite.attendanceId != attendanceId).toList();
+    notifyListeners();
+
+    // Accepting makes the event visible, so refresh the event list.
+    if (accept) {
+      await load();
+    }
+  }
+
+  Future<List<Attendee>> loadAttendees(int eventId) async {
+    final token = _authService.token;
+    if (token == null) {
+      throw const EventsException('You need to be signed in');
+    }
+
+    final response = await _client.get(
+      Uri.parse('$apiBaseUrl/events/$eventId/attendees'),
+      headers: _headers(token),
+    );
+
+    if (response.statusCode != 200) {
+      throw EventsException(_errorMessage(response, 'Unable to load attendees'));
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) {
+      throw const EventsException('Unexpected response from the server');
+    }
+    return decoded
+        .map((item) => Attendee.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Attendee> invite(int eventId, String email) async {
+    final token = _authService.token;
+    if (token == null) {
+      throw const EventsException('You need to be signed in');
+    }
+
+    final response = await _client.post(
+      Uri.parse('$apiBaseUrl/events/$eventId/invite'),
+      headers: _headers(token, withJson: true),
+      body: jsonEncode({'email': email.trim()}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw EventsException(_errorMessage(response, 'Unable to send invite'));
+    }
+
+    return Attendee.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> removeAttendee(int eventId, int attendanceId) async {
+    final token = _authService.token;
+    if (token == null) {
+      throw const EventsException('You need to be signed in');
+    }
+
+    final response = await _client.delete(
+      Uri.parse('$apiBaseUrl/events/$eventId/attendees/$attendanceId'),
+      headers: _headers(token),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw EventsException(_errorMessage(response, 'Unable to remove attendee'));
+    }
+  }
+
   void clear() {
     _events = const [];
+    _pendingInvites = const [];
     error = null;
+    invitesError = null;
     isLoading = false;
+    isLoadingInvites = false;
     notifyListeners();
   }
 

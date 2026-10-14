@@ -28,6 +28,7 @@ class _MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     widget.eventsService.load();
+    widget.eventsService.loadInvites();
   }
 
   Future<void> _openCreateEvent() async {

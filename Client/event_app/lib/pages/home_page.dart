@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../auth_service.dart';
+import '../date_format.dart';
 import '../events_service.dart';
 import '../models/event.dart';
+import '../models/invite.dart';
 import '../widgets/event_card.dart';
 import 'create_event.dart';
 
@@ -31,9 +33,13 @@ class HomePage extends StatelessWidget {
         builder: (context, _) {
           final upcoming = eventsService.upcoming;
           final shown = upcoming.take(_maxUpcoming).toList();
+          final invites = eventsService.pendingInvites;
 
           return RefreshIndicator(
-            onRefresh: eventsService.load,
+            onRefresh: () async {
+              await eventsService.load();
+              await eventsService.loadInvites();
+            },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -50,6 +56,24 @@ class HomePage extends StatelessWidget {
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 24),
+                if (invites.isNotEmpty) ...[
+                  Text(
+                    'Invitations',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final invite in invites)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _InviteCard(
+                        invite: invite,
+                        onAccept: () => _respond(context, invite, accept: true),
+                        onDecline: () => _respond(context, invite, accept: false),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                ],
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -131,6 +155,96 @@ class HomePage extends StatelessWidget {
         builder: (_) => CreateEvent(
           eventsService: eventsService,
           event: event,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _respond(
+    BuildContext context,
+    Invite invite, {
+    required bool accept,
+  }) async {
+    try {
+      await eventsService.respondToInvite(invite.attendanceId, accept: accept);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(accept ? 'Invitation accepted' : 'Invitation declined'),
+        ),
+      );
+    } on EventsException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to connect to the server')),
+      );
+    }
+  }
+}
+
+class _InviteCard extends StatelessWidget {
+  const _InviteCard({
+    required this.invite,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  final Invite invite;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: scheme.primaryContainer,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              invite.name,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: scheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${invite.hostName ?? 'Someone'} invited you',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${formatEventDate(invite.eventTime)} at ${formatEventTime(invite.eventTime)}'
+              '${invite.location.isNotEmpty ? ' · ${invite.location}' : ''}',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(onPressed: onDecline, child: const Text('Decline')),
+                const SizedBox(width: 8),
+                FilledButton(onPressed: onAccept, child: const Text('Accept')),
+              ],
+            ),
+          ],
         ),
       ),
     );

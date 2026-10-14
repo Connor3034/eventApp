@@ -28,5 +28,13 @@ CREATE TABLE IF NOT EXISTS Events (
 CREATE TABLE IF NOT EXISTS Attendance (
   attendance_id SERIAL PRIMARY KEY,
   event_id INTEGER REFERENCES Events (event_id) ON DELETE CASCADE,
-  user_id INTEGER REFERENCES Users (user_id)
+  user_id INTEGER REFERENCES Users (user_id),
+  email VARCHAR(255),
+  status VARCHAR(32) NOT NULL DEFAULT 'pending'
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS attendance_event_user_unique
+  ON Attendance (event_id, user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS attendance_event_email_unique
+  ON Attendance (event_id, LOWER(email));
