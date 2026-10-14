@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../date_format.dart';
 import '../events_service.dart';
 import '../models/event.dart';
-import 'attendees_page.dart';
 
 class CreateEvent extends StatefulWidget {
   const CreateEvent({
@@ -186,17 +185,6 @@ class _CreateEventState extends State<CreateEvent> {
     }
   }
 
-  void _openAttendees() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AttendeesPage(
-          eventsService: widget.eventsService,
-          event: widget.event!,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -204,14 +192,6 @@ class _CreateEventState extends State<CreateEvent> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? 'Edit Event' : 'Create Event'),
-        actions: [
-          if (_isEditing && widget.event!.canEdit)
-            IconButton(
-              onPressed: _openAttendees,
-              tooltip: 'Attendees',
-              icon: const Icon(Icons.people_outline),
-            ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

@@ -6,6 +6,7 @@ import '../events_service.dart';
 import '../models/event.dart';
 import '../models/invite.dart';
 import '../widgets/event_card.dart';
+import 'attendees_page.dart';
 import 'create_event.dart';
 
 class HomePage extends StatelessWidget {
@@ -144,6 +145,7 @@ class HomePage extends StatelessWidget {
           child: EventCard(
             event: event,
             onTap: event.canEdit ? () => _openEvent(context, event) : null,
+            onAttendees: () => _openAttendees(context, event),
           ),
         ),
     ];
@@ -153,6 +155,17 @@ class HomePage extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CreateEvent(
+          eventsService: eventsService,
+          event: event,
+        ),
+      ),
+    );
+  }
+
+  void _openAttendees(BuildContext context, Event event) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AttendeesPage(
           eventsService: eventsService,
           event: event,
         ),

@@ -4,10 +4,16 @@ import '../date_format.dart';
 import '../models/event.dart';
 
 class EventCard extends StatelessWidget {
-  const EventCard({required this.event, this.onTap, super.key});
+  const EventCard({
+    required this.event,
+    this.onTap,
+    this.onAttendees,
+    super.key,
+  });
 
   final Event event;
   final VoidCallback? onTap;
+  final VoidCallback? onAttendees;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +62,13 @@ class EventCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (onAttendees != null)
+                IconButton(
+                  onPressed: onAttendees,
+                  tooltip: 'Attendees',
+                  icon: const Icon(Icons.people_outline),
+                  color: colorScheme.onSurfaceVariant,
+                ),
               if (onTap != null)
                 Icon(
                   Icons.chevron_right,

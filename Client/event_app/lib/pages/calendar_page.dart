@@ -4,6 +4,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../events_service.dart';
 import '../models/event.dart';
 import '../widgets/event_card.dart';
+import 'attendees_page.dart';
 import 'create_event.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -99,6 +100,7 @@ class _CalendarPageState extends State<CalendarPage> {
         return EventCard(
           event: event,
           onTap: event.canEdit ? () => _openEvent(event) : null,
+          onAttendees: () => _openAttendees(event),
         );
       },
     );
@@ -108,6 +110,17 @@ class _CalendarPageState extends State<CalendarPage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CreateEvent(
+          eventsService: widget.eventsService,
+          event: event,
+        ),
+      ),
+    );
+  }
+
+  void _openAttendees(Event event) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AttendeesPage(
           eventsService: widget.eventsService,
           event: event,
         ),
