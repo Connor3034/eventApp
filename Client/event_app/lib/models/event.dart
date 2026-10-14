@@ -6,6 +6,8 @@ class Event {
     required this.eventTime,
     this.userId,
     this.userName,
+    this.canEdit = false,
+    this.canDelete = false,
   });
 
   final int id;
@@ -14,6 +16,8 @@ class Event {
   final DateTime eventTime;
   final int? userId;
   final String? userName;
+  final bool canEdit;
+  final bool canDelete;
 
   factory Event.fromJson(Map<String, dynamic> json) {
     return Event(
@@ -25,6 +29,8 @@ class Event {
       eventTime: DateTime.parse(json['event_time'] as String).toLocal(),
       userId: json['user_id'] as int?,
       userName: json['user_name'] as String?,
+      canEdit: json['can_edit'] as bool? ?? false,
+      canDelete: json['can_delete'] as bool? ?? false,
     );
   }
 

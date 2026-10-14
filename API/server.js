@@ -173,22 +173,30 @@ app.get("/api/users", requireAuth, async (req, res) => {
   }
 });
 
-// an user enpoint with a if statement checking that there is a username and that it is a string and returns an error if it doesnt meet those requirements. it then inserts the username into the database returning the id and the name 
-// this is the endpoint for the events table, returning all the rows plus the accociated user info ordered by the event ids 
+// this is the endpoint for the events table, returning all the rows plus the
+// associated user info ordered by the event ids. can_edit is true for the
+// creator or anyone with an Attendance row (an invitee); can_delete is true
+// only for the creator.
 app.get("/api/events", requireAuth, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT
+    const result = await pool.query(
+      `SELECT
         e.event_id,
         e.name,
         e.event_time,
         e.location,
         e.user_id,
-        u.user_name
+        u.user_name,
+        (e.user_id = $1 OR EXISTS (
+          SELECT 1 FROM Attendance a
+          WHERE a.event_id = e.event_id AND a.user_id = $1
+        )) AS can_edit,
+        (e.user_id = $1) AS can_delete
       FROM Events e
       LEFT JOIN Users u ON e.user_id = u.user_id
-      ORDER BY e.event_id
-    `);
+      ORDER BY e.event_id`,
+      [req.userId]
+    );
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -212,7 +220,100 @@ app.post("/api/events", requireAuth, async (req, res) => {
        RETURNING event_id, name, event_time, location, user_id`,
       [normalizedName, event_time, normalizedLocation, req.userId]
     );
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({ ...result.rows[0], can_edit: true, can_delete: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// this endpoint updates an existing event. the creator or an invitee
+// (anyone with an Attendance row for the event) may edit it.
+app.put("/api/events/:id", requireAuth, async (req, res) => {
+  const eventId = Number(req.params.id);
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return res.status(400).json({ error: "A valid event id is required" });
+  }
+
+  const { name, event_time, location } = req.body;
+  const normalizedName = typeof name === "string" ? name.trim() : "";
+  const normalizedLocation = typeof location === "string" ? location.trim() : "";
+
+  if (!normalizedName || !event_time || !normalizedLocation) {
+    return res.status(400).json({ error: "name, event_time, and location are required" });
+  }
+
+  try {
+    const existing = await pool.query(
+      `SELECT
+        e.user_id,
+        (e.user_id = $2 OR EXISTS (
+          SELECT 1 FROM Attendance a
+          WHERE a.event_id = e.event_id AND a.user_id = $2
+        )) AS can_edit
+      FROM Events e
+      WHERE e.event_id = $1`,
+      [eventId, req.userId]
+    );
+    const event = existing.rows[0];
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+    if (!event.can_edit) {
+      return res.status(403).json({ error: "You cannot edit this event" });
+    }
+
+    const result = await pool.query(
+      `UPDATE Events
+       SET name = $1, event_time = $2, location = $3
+       WHERE event_id = $4
+       RETURNING event_id, name, event_time, location, user_id`,
+      [normalizedName, event_time, normalizedLocation, eventId]
+    );
+    res.json({
+      ...result.rows[0],
+      can_edit: true,
+      can_delete: event.user_id === req.userId,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// this endpoint deletes an event. only the creator may delete it. any
+// attendance rows are removed first so the foreign key does not block it.
+app.delete("/api/events/:id", requireAuth, async (req, res) => {
+  const eventId = Number(req.params.id);
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return res.status(400).json({ error: "A valid event id is required" });
+  }
+
+  try {
+    const existing = await pool.query(
+      "SELECT user_id FROM Events WHERE event_id = $1",
+      [eventId]
+    );
+    const event = existing.rows[0];
+    if (!event) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+    if (event.user_id !== req.userId) {
+      return res.status(403).json({ error: "Only the creator can delete this event" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM Attendance WHERE event_id = $1", [eventId]);
+      await client.query("DELETE FROM Events WHERE event_id = $1", [eventId]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    res.status(204).end();
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -4,9 +4,10 @@ import '../date_format.dart';
 import '../models/event.dart';
 
 class EventCard extends StatelessWidget {
-  const EventCard({required this.event, super.key});
+  const EventCard({required this.event, this.onTap, super.key});
 
   final Event event;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -17,42 +18,51 @@ class EventCard extends StatelessWidget {
       margin: EdgeInsets.zero,
       elevation: 0,
       color: colorScheme.surfaceContainerHighest,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _DateBadge(date: event.eventTime),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    event.name,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _DateBadge(date: event.eventTime),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      event.name,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  _DetailRow(
-                    icon: Icons.schedule,
-                    text: formatEventTime(event.eventTime),
-                  ),
-                  if (event.location.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
                     _DetailRow(
-                      icon: Icons.place_outlined,
-                      text: event.location,
+                      icon: Icons.schedule,
+                      text: formatEventTime(event.eventTime),
                     ),
+                    if (event.location.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      _DetailRow(
+                        icon: Icons.place_outlined,
+                        text: event.location,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+              if (onTap != null)
+                Icon(
+                  Icons.chevron_right,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+            ],
+          ),
         ),
       ),
     );

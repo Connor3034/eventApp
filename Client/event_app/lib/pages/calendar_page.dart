@@ -4,6 +4,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../events_service.dart';
 import '../models/event.dart';
 import '../widgets/event_card.dart';
+import 'create_event.dart';
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({required this.eventsService, super.key});
@@ -93,7 +94,24 @@ class _CalendarPageState extends State<CalendarPage> {
       padding: const EdgeInsets.all(20),
       itemCount: events.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, index) => EventCard(event: events[index]),
+      itemBuilder: (context, index) {
+        final event = events[index];
+        return EventCard(
+          event: event,
+          onTap: event.canEdit ? () => _openEvent(event) : null,
+        );
+      },
+    );
+  }
+
+  void _openEvent(Event event) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateEvent(
+          eventsService: widget.eventsService,
+          event: event,
+        ),
+      ),
     );
   }
 }

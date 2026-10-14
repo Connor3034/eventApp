@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../date_format.dart';
 import '../events_service.dart';
+import '../models/event.dart';
 
 class CreateEvent extends StatefulWidget {
-  const CreateEvent({required this.eventsService, super.key});
+  const CreateEvent({
+    required this.eventsService,
+    this.event,
+    super.key,
+  });
 
   final EventsService eventsService;
+
+  /// When provided, the form edits this event instead of creating a new one.
+  final Event? event;
 
   @override
   State<CreateEvent> createState() => _CreateEventState();
@@ -22,7 +30,28 @@ class _CreateEventState extends State<CreateEvent> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   bool _isSubmitting = false;
+  bool _prefilled = false;
   String? _error;
+
+  bool get _isEditing => widget.event != null;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_prefilled) return;
+    _prefilled = true;
+
+    final event = widget.event;
+    if (event == null) return;
+
+    _nameController.text = event.name;
+    _locationController.text = event.location;
+    final date = event.eventTime;
+    _selectedDate = DateTime(date.year, date.month, date.day);
+    _selectedTime = TimeOfDay.fromDateTime(date);
+    _dateController.text = formatEventDate(_selectedDate!);
+    _timeController.text = _selectedTime!.format(context);
+  }
 
   @override
   void dispose() {
@@ -80,14 +109,69 @@ class _CreateEventState extends State<CreateEvent> {
     });
 
     try {
-      await widget.eventsService.create(
-        name: _nameController.text,
-        location: _locationController.text,
-        eventTime: eventTime,
-      );
+      if (_isEditing) {
+        await widget.eventsService.update(
+          id: widget.event!.id,
+          name: _nameController.text,
+          location: _locationController.text,
+          eventTime: eventTime,
+        );
+      } else {
+        await widget.eventsService.create(
+          name: _nameController.text,
+          location: _locationController.text,
+          eventTime: eventTime,
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Event created')),
+        SnackBar(content: Text(_isEditing ? 'Event updated' : 'Event created')),
+      );
+      Navigator.of(context).pop();
+    } on EventsException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Unable to connect to the server');
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final event = widget.event;
+    if (event == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete event?'),
+        content: Text('"${event.name}" will be permanently removed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+
+    try {
+      await widget.eventsService.delete(event.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Event deleted')),
       );
       Navigator.of(context).pop();
     } on EventsException catch (error) {
@@ -106,7 +190,7 @@ class _CreateEventState extends State<CreateEvent> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Event')),
+      appBar: AppBar(title: Text(_isEditing ? 'Edit Event' : 'Create Event')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -181,8 +265,20 @@ class _CreateEventState extends State<CreateEvent> {
                         dimension: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Create Event'),
+                    : Text(_isEditing ? 'Save changes' : 'Create Event'),
               ),
+              if (_isEditing && widget.event!.canDelete) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _isSubmitting ? null : _confirmDelete,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: theme.colorScheme.error,
+                  ),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Delete event'),
+                ),
+              ],
             ],
           ),
         ),

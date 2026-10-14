@@ -4,6 +4,7 @@ import '../auth_service.dart';
 import '../events_service.dart';
 import '../models/event.dart';
 import '../widgets/event_card.dart';
+import 'create_event.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({
@@ -116,9 +117,23 @@ class HomePage extends StatelessWidget {
       for (final event in shown)
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: EventCard(event: event),
+          child: EventCard(
+            event: event,
+            onTap: event.canEdit ? () => _openEvent(context, event) : null,
+          ),
         ),
     ];
+  }
+
+  void _openEvent(BuildContext context, Event event) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateEvent(
+          eventsService: eventsService,
+          event: event,
+        ),
+      ),
+    );
   }
 }
 

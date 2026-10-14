@@ -27,6 +27,6 @@ CREATE TABLE IF NOT EXISTS Events (
 
 CREATE TABLE IF NOT EXISTS Attendance (
   attendance_id SERIAL PRIMARY KEY,
-  event_id INTEGER REFERENCES Events (event_id),
+  event_id INTEGER REFERENCES Events (event_id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES Users (user_id)
 );

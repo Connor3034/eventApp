@@ -110,6 +110,59 @@ class EventsService extends ChangeNotifier {
     return created;
   }
 
+  Future<Event> update({
+    required int id,
+    required String name,
+    required String location,
+    required DateTime eventTime,
+  }) async {
+    final token = _authService.token;
+    if (token == null) {
+      throw const EventsException('You need to be signed in');
+    }
+
+    final response = await _client.put(
+      Uri.parse('$apiBaseUrl/events/$id'),
+      headers: _headers(token, withJson: true),
+      body: jsonEncode({
+        'name': name.trim(),
+        'location': location.trim(),
+        'event_time': eventTime.toUtc().toIso8601String(),
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw EventsException(_errorMessage(response, 'Unable to update event'));
+    }
+
+    final updated =
+        Event.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    _events = [
+      for (final event in _events) if (event.id == id) updated else event,
+    ];
+    notifyListeners();
+    return updated;
+  }
+
+  Future<void> delete(int id) async {
+    final token = _authService.token;
+    if (token == null) {
+      throw const EventsException('You need to be signed in');
+    }
+
+    final response = await _client.delete(
+      Uri.parse('$apiBaseUrl/events/$id'),
+      headers: _headers(token),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw EventsException(_errorMessage(response, 'Unable to delete event'));
+    }
+
+    _events = _events.where((event) => event.id != id).toList();
+    notifyListeners();
+  }
+
   void clear() {
     _events = const [];
     error = null;
